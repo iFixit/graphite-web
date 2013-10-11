@@ -678,7 +678,7 @@ def consolidateBy(requestContext, seriesList, consolidationFunc):
   return seriesList
 
 
-def resample(requestContext, seriesList, pointsPerPx = 1):
+def resample(requestContext, seriesList, pointsPerPx = 1, func = 'avg'):
   """
   Resamples the given series according to the requested graph width and
   $pointsPerPx aggregating by average. Total number of points after this
@@ -703,6 +703,17 @@ def resample(requestContext, seriesList, pointsPerPx = 1):
   """
   newSampleCount = requestContext['width']
 
+  if func == 'avg':
+    aggregate = lambda samples: sum(samples) / len(samples)
+  elif func == 'last':
+    aggregate = lambda samples: samples[-1]
+  elif func == 'max':
+    aggregate = max
+  elif func == 'min':
+    aggregate = min
+  elif func == 'median':
+    aggregate = lambda samples: sorted(samples)[len(samples) / 2]
+
   for seriesIndex, series in enumerate(seriesList):
     newValues = []
     seriesLength = (series.end - series.start)
@@ -714,30 +725,30 @@ def resample(requestContext, seriesList, pointsPerPx = 1):
 
     sampleWidth = 0
     sampleCount = 0
-    sampleSum = 0
+    samples = []
 
     for value in series:
       if (value is not None):
+        samples.append( value )
         sampleCount += 1
-        sampleSum += value
       sampleWidth += series.step
 
       # If the current sample covers the width of a new step, add it to the
       # result
       if (sampleWidth >= newStep):
         if sampleCount > 0:
-          newValues.append(sampleSum / sampleCount)
+          newValues.append(aggregate(samples))
         else:
           newValues.append(None)
         sampleWidth -= newStep
-        sampleSum = 0
+        samples = []
         sampleCount = 0
 
     # Process and add the left-over sample if it's not empty
     if sampleCount > 0:
-      newValues.append(sampleSum / sampleCount)
+      newValues.append(aggregate(samples))
 
-    newName = "resample(%s, %s)" % (series.name, pointsPerPx)
+    newName = "resample(%s, %s, %s)" % (series.name, pointsPerPx, func)
     newSeries = TimeSeries(newName, series.start, series.end, newStep, newValues)
     newSeries.pathExpression = newName
     seriesList[seriesIndex] = newSeries
@@ -745,7 +756,7 @@ def resample(requestContext, seriesList, pointsPerPx = 1):
   return seriesList
 
 
-def smooth(requestContext, seriesList, windowPixelSize = 5):
+def smooth(requestContext, seriesList, windowPixelSize = 5, func = 'avg'):
   """
   Resample and smooth a set of metrics. Provides line smoothing that is
   independent of time scale (windowPixelSize ~ movingAverage over pixels)
@@ -761,7 +772,12 @@ def smooth(requestContext, seriesList, windowPixelSize = 5):
   adjusted to cover the same number of pixels.
   """
   pointsPerPixel = 2
-  resampled = resample(requestContext, seriesList, pointsPerPixel)
+  resampled = resample(requestContext, seriesList, pointsPerPixel, func)
+
+  if func == 'avg' or func == 'last' or func == 'max' or func == 'min':
+    aggregate = movingAverage
+  elif func == 'median':
+    aggregate = movingMedian
 
   sampleSize = int(windowPixelSize * pointsPerPixel)
   expectedSamples = requestContext['width'] * pointsPerPixel

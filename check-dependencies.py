@@ -22,13 +22,16 @@ except:
   fatal += 1
 
 
-# Test for pycairo
+# Test for pycairo or cairocffi
 try:
   import cairo
-except:
-  print "[FATAL] Unable to import the 'cairo' module, do you have pycairo installed for python %s?" % py_version
-  cairo = None
-  fatal += 1
+except ImportError:
+  try:
+    import cairocffi as cairo
+  except ImportError:
+    print "[FATAL] Unable to import the 'cairo' module, do you have pycairo installed for python %s?" % py_version
+    cairo = None
+    fatal += 1
 
 
 # Test that pycairo has the PNG backend
@@ -68,8 +71,8 @@ except:
 
 
 # Verify django version
-if django and django.VERSION[:2] < (1,1):
-  print "[FATAL] You have django version %s installed, but version 1.1 or greater is required" % django.get_version()
+if django and django.VERSION[:2] < (1,3):
+  print "[FATAL] You have django version %s installed, but version 1.3 or greater is required" % django.get_version()
   fatal += 1
 
 
@@ -82,6 +85,14 @@ except ImportError:
   except ImportError:
     print "[FATAL] Unable to import either the 'json' or 'simplejson' module, at least one is required."
     fatal += 1
+
+
+# Test for a pytz module
+try:
+  import pytz
+except ImportError:
+  print "[FATAL] Unable to import the 'pytz' module, do you have pytz installed for python %s?" % py_version
+  fatal += 1
 
 
 # Test for zope.interface

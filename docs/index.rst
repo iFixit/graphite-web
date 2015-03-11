@@ -3,8 +3,10 @@ Graphite Documentation
 ======================
 
 .. toctree::
+   :maxdepth: 1
 
    overview
+   faq
    install
    carbon-daemons
    config-carbon
@@ -19,6 +21,7 @@ Graphite Documentation
    terminology
    tools
    who-is-using
+   releases
 
 
 Indices and tables

@@ -562,7 +562,7 @@ function initDashboard () {
               },
               { text: "From Saved Graph",
                 handler: newFromSavedGraph
-              },
+              }
             ]
           }
         },
@@ -648,7 +648,9 @@ function initDashboard () {
       change: function (field, newValue) { updateAutoRefresh(newValue); },
       specialkey: function (field, e) {
                     if (e.getKey() == e.ENTER) {
-                      updateAutoRefresh( field.getValue() );
+                      if (field.getValue() >= 1) {
+                        updateAutoRefresh( field.getValue() );
+                      }
                     }
                   }
     }
@@ -950,7 +952,7 @@ function graphAreaToggle(target, options) {
 }
 
 function importGraphUrl(targetUrl, options) {
-  var fullUrl = decodeURIComponent(targetUrl).replace(/#/,'%23');
+  var fullUrl = targetUrl;
   var i = fullUrl.indexOf("?");
   if (i == -1) {
     return;
@@ -1826,6 +1828,52 @@ function graphClicked(graphView, graphIndex, element, evt) {
         });
         win.show();
       }
+    }, {
+      xtype: 'button',
+      fieldLabel: "<span style='visibility: hidden'>",
+      text: "Short Direct URL",
+      width: 100,
+      handler: function () {
+        menu.destroy();
+        showUrl = function(options, success, response) {
+            if(success) {
+              var win = new Ext.Window({
+                title: "Graph URL",
+                width: 600,
+                height: 125,
+                layout: 'border',
+                modal: true,
+                items: [
+                  {
+                    xtype: "label",
+                    region: 'north',
+                    style: "text-align: center;",
+                    text: "Short Direct URL to this graph"
+                  }, {
+                    xtype: 'textfield',
+                    region: 'center',
+                    value:  window.location.origin + response.responseText,
+                    editable: false,
+                    style: "text-align: center; font-size: large;",
+                    listeners: {
+                      focus: function (field) { field.selectText(); }
+                    }
+                  }
+                ],
+                buttonAlign: 'center',
+                buttons: [
+                  {text: "Close", handler: function () { win.close(); } }
+                ]
+              });
+              win.show();
+           }
+        }
+        Ext.Ajax.request({
+          method: 'GET',
+          url: '/s' + record.data.url,
+          callback: showUrl,
+        });
+      }
     }]
   });
 
@@ -1974,29 +2022,28 @@ function breakoutGraph(record) {
 }
 
 function mailGraph(record) {
-  mygraphParams = record.get('params');
-  mygraphParams['target'] = record.data['target'];
-  newparams = Ext.encode(Ext.apply(mygraphParams, defaultGraphParams));
+  var mygraphParams = record.get('params');
+  var newparams = Ext.encode(Ext.apply(mygraphParams, defaultGraphParams));
 
   var fromField = new Ext.form.TextField({
     fieldLabel: "From",
     name: 'sender',
     width: 300,
-    allowBlank: false,
+    allowBlank: false
   });
 
   var toField = new Ext.form.TextField({
     fieldLabel: "To",
     name: 'recipients',
     width: 300,
-    allowBlank: false,
+    allowBlank: false
   });
 
   var subjectField = new Ext.form.TextField({
     fieldLabel: "Subject",
     name: 'subject',
     width: 300,
-    allowBlank: false,
+    allowBlank: false
   });
 
   var msgField = new Ext.form.TextArea({
@@ -2045,7 +2092,7 @@ function mailGraph(record) {
     resizable: true,
     modal: true,
     layout: 'fit',
-    items: [contactForm],
+    items: [contactForm]
   });
   win.show();
 }

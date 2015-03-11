@@ -62,18 +62,22 @@ def index_json(request):
   for match in do_walk_rrd_dirs(settings.RRD_DIR):
     matches.append(match)
 
-  matches = [ m.replace('.wsp','').replace('.rrd','').replace('/', '.') for m in sorted(matches) ]
-  if jsonp:
-    return HttpResponse("%s(%s)" % (jsonp, json.dumps(matches)), mimetype='text/javascript')
-  else:
-    return HttpResponse(json.dumps(matches), mimetype='application/json')
+  matches = [
+    m
+    .replace('.wsp', '')
+    .replace('.rrd', '')
+    .replace('/', '.')
+    .lstrip('.')
+    for m in sorted(matches)
+  ]
+  return json_response_for(request, matches, jsonp=jsonp)
 
 
 def search_view(request):
   try:
     query = str( request.REQUEST['query'] )
   except:
-    return HttpResponseBadRequest(content="Missing required parameter 'query'", mimetype="text/plain")
+    return HttpResponseBadRequest(content="Missing required parameter 'query'", content_type="text/plain")
   search_request = {
     'query' : query,
     'max_results' : int( request.REQUEST.get('max_results', 25) ),
@@ -83,8 +87,7 @@ def search_view(request):
   #  search_request['query'] += '*'
 
   results = sorted(searcher.search(**search_request))
-  result_data = json.dumps( dict(metrics=results) )
-  return HttpResponse(result_data, mimetype='application/json')
+  return json_response_for(request, dict(metrics=results))
 
 
 def context_view(request):
@@ -92,7 +95,7 @@ def context_view(request):
     contexts = []
 
     if not 'metric' not in request.GET:
-      return HttpResponse('{ "error" : "missing required parameter \"metric\"" }', mimetype='application/json')
+      return HttpResponse('{ "error" : "missing required parameter \"metric\"" }', content_type='application/json')
 
     for metric in request.GET.getlist('metric'):
       try:
@@ -102,20 +105,19 @@ def context_view(request):
       else:
         contexts.append({ 'metric' : metric, 'context' : context })
 
-    content = json.dumps( { 'contexts' : contexts } )
-    return HttpResponse(content, mimetype='application/json')
+    return json_response_for(request, { 'contexts' : contexts })
 
   elif request.method == 'POST':
 
     if 'metric' not in request.POST:
-      return HttpResponse('{ "error" : "missing required parameter \"metric\"" }', mimetype='application/json')
+      return HttpResponse('{ "error" : "missing required parameter \"metric\"" }', content_type='application/json')
 
     newContext = dict( item for item in request.POST.items() if item[0] != 'metric' )
 
     for metric in request.POST.getlist('metric'):
       STORE.get(metric).updateContext(newContext)
 
-    return HttpResponse('{ "success" : true }', mimetype='application/json')
+    return HttpResponse('{ "success" : true }', content_type='application/json')
 
   else:
     return HttpResponseBadRequest("invalid method, must be GET or POST")
@@ -129,11 +131,12 @@ def find_view(request):
   contexts = int( request.REQUEST.get('contexts', 0) )
   wildcards = int( request.REQUEST.get('wildcards', 0) )
   automatic_variants = int( request.REQUEST.get('automatic_variants', 0) )
+  jsonp = request.REQUEST.get('jsonp', False)
 
   try:
     query = str( request.REQUEST['query'] )
   except:
-    return HttpResponseBadRequest(content="Missing required parameter 'query'", mimetype="text/plain")
+    return HttpResponseBadRequest(content="Missing required parameter 'query'", content_type="text/plain")
 
   if '.' in query:
     base_path = query.rsplit('.', 1)[0] + '.'
@@ -168,11 +171,11 @@ def find_view(request):
 
   if format == 'treejson':
     content = tree_json(matches, base_path, wildcards=profile.advancedUI or wildcards, contexts=contexts)
-    response = HttpResponse(content, mimetype='application/json')
+    response = json_response_for(request, content)
 
   elif format == 'pickle':
     content = pickle_nodes(matches, contexts=contexts)
-    response = HttpResponse(content, mimetype='application/pickle')
+    response = HttpResponse(content, content_type='application/pickle')
 
   elif format == 'completer':
     #if len(matches) == 1 and (not matches[0].isLeaf()) and query == matches[0].metric_path + '*': # auto-complete children
@@ -188,11 +191,10 @@ def find_view(request):
       wildcardNode = {'name' : '*'}
       results.append(wildcardNode)
 
-    content = json.dumps({ 'metrics' : results })
-    response = HttpResponse(content, mimetype='application/json')
+    response = json_response_for(request, { 'metrics' : results }, jsonp=jsonp)
 
   else:
-    return HttpResponseBadRequest(content="Invalid value for 'format' parameter", mimetype="text/plain")
+    return HttpResponseBadRequest(content="Invalid value for 'format' parameter", content_type="text/plain")
 
   response['Pragma'] = 'no-cache'
   response['Cache-Control'] = 'no-cache'
@@ -228,7 +230,7 @@ def expand_view(request):
     'results' : results
   }
 
-  response = HttpResponse(json.dumps(result), mimetype='application/json')
+  response = json_response_for(request, result)
   response['Pragma'] = 'no-cache'
   response['Cache-Control'] = 'no-cache'
   return response
@@ -245,7 +247,7 @@ def get_metadata_view(request):
       log.exception()
       results[metric] = dict(error="Unexpected error occurred in CarbonLink.get_metadata(%s, %s)" % (metric, key))
 
-  return HttpResponse(json.dumps(results), mimetype='application/json')
+  return json_response_for(request, results)
 
 
 def set_metadata_view(request):
@@ -263,7 +265,7 @@ def set_metadata_view(request):
 
   elif request.method == 'POST':
     if request.META.get('CONTENT_TYPE') == 'application/json':
-      operations = json.loads( request.raw_post_data )
+      operations = json.loads( request.body )
     else:
       operations = json.loads( request.POST['operations'] )
 
@@ -280,7 +282,7 @@ def set_metadata_view(request):
   else:
     results = dict(error="Invalid request method")
 
-  return HttpResponse(json.dumps(results), mimetype='application/json')
+  return json_response_for(request, results)
 
 
 def tree_json(nodes, base_path, wildcards=False, contexts=False):
@@ -336,7 +338,7 @@ def tree_json(nodes, base_path, wildcards=False, contexts=False):
 
   results.extend(results_branch)
   results.extend(results_leaf)
-  return json.dumps(results)
+  return results
 
 
 def pickle_nodes(nodes, contexts=False):
@@ -352,3 +354,16 @@ def any(iterable): #python2.4 compatibility
     if i:
       return True
   return False
+
+def json_response_for(request, data, content_type='application/json', jsonp=False, **kwargs):
+  accept = request.META.get('HTTP_ACCEPT', 'application/json')
+  ensure_ascii = accept == 'application/json'
+
+  content = json.dumps(data, ensure_ascii=ensure_ascii)
+  if jsonp:
+    content = "%s(%s)" % (jsonp, content)
+    content_type = 'text/javascript'
+  if not ensure_ascii:
+    content_type += ';charset=utf-8'
+
+  return HttpResponse(content, content_type=content_type, **kwargs)

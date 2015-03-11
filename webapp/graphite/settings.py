@@ -15,7 +15,10 @@ limitations under the License."""
 # DO NOT MODIFY THIS FILE DIRECTLY - use local_settings.py instead
 import sys, os
 from django import VERSION as DJANGO_VERSION
+from django.core.exceptions import ImproperlyConfigured
+from exceptions import DeprecationWarning
 from os.path import abspath, dirname, join
+from warnings import warn
 
 try:
   import rrdtool
@@ -23,7 +26,7 @@ except ImportError:
   rrdtool = False
 
 GRAPHITE_WEB_APP_SETTINGS_LOADED = False
-WEBAPP_VERSION = '0.9.10'
+WEBAPP_VERSION = '0.9.13'
 DEBUG = False
 JAVASCRIPT_DEBUG = False
 
@@ -62,7 +65,9 @@ LOG_CACHE_PERFORMANCE = False
 REMOTE_STORE_FETCH_TIMEOUT = 6
 REMOTE_STORE_FIND_TIMEOUT = 2.5
 REMOTE_STORE_RETRY_DELAY = 60
+REMOTE_STORE_USE_POST = False
 REMOTE_FIND_CACHE_DURATION = 300
+REMOTE_PREFETCH_DATA = False
 
 #Remote rendering settings
 REMOTE_RENDERING = False #if True, rendering is delegated to RENDERING_HOSTS
@@ -73,6 +78,7 @@ LOG_RENDERING_PERFORMANCE = False
 #Miscellaneous settings
 CARBONLINK_HOSTS = ["127.0.0.1:7002"]
 CARBONLINK_TIMEOUT = 1.0
+CARBONLINK_QUERY_BULK = False
 SMTP_SERVER = "localhost"
 DOCUMENTATION_URL = "http://graphite.readthedocs.org/"
 ALLOW_ANONYMOUS_CLI = True
@@ -91,17 +97,38 @@ LDAP_URI = None
 
 #Set this to True to delegate authentication to the web server
 USE_REMOTE_USER_AUTHENTICATION = False
+REMOTE_USER_BACKEND = "" # Provide an alternate or subclassed backend
+
+# Django 1.5 requires this so we set a default but warn the user
+SECRET_KEY = 'UNSAFE_DEFAULT'
+
+# Django 1.5 requires this to be set. Here we default to prior behavior and allow all
+ALLOWED_HOSTS = [ '*' ]
 
 # Override to link a different URL for login (e.g. for django_openid_auth)
 LOGIN_URL = '/account/login'
 
-#Initialize database settings - Old style (pre 1.2)
-DATABASE_ENGINE = 'django.db.backends.sqlite3'	# 'postgresql', 'mysql', 'sqlite3' or 'ado_mssql'.
-DATABASE_NAME = ''				# Or path to database file if using sqlite3.
-DATABASE_USER = ''				# Not used with sqlite3.
-DATABASE_PASSWORD = ''				# Not used with sqlite3.
-DATABASE_HOST = ''				# Set to empty string for localhost. Not used with sqlite3.
-DATABASE_PORT = ''				# Set to empty string for default. Not used with sqlite3.
+# Set the default timezone to UTC
+TIME_ZONE = 'UTC'
+
+#Initialize deprecated database settings
+DATABASE_ENGINE = ''
+DATABASE_NAME = ''
+DATABASE_USER = ''
+DATABASE_PASSWORD = ''
+DATABASE_HOST = ''
+DATABASE_PORT = ''
+
+DATABASES = {
+  'default': {
+    'NAME': '',
+    'ENGINE': 'django.db.backends.sqlite3',
+    'USER': '',
+    'PASSWORD': '',
+    'HOST': '',
+    'PORT': ''
+  }
+}
 
 # If using rrdcached, set to the address or socket of the daemon
 FLUSHRRDCACHED = ''
@@ -150,22 +177,71 @@ if not DATA_DIRS:
 
 # Default sqlite db file
 # This is set here so that a user-set STORAGE_DIR is available
-if 'sqlite3' in DATABASE_ENGINE \
-    and not DATABASE_NAME:
-  DATABASE_NAME = join(STORAGE_DIR, 'graphite.db')
+#XXX This can finally be removed once we only support Django >= 1.4
+# Support old local_settings.py db configs for a bit longer
+if DJANGO_VERSION < (1,4):
+  warn_deprecated = False
+  if DATABASE_ENGINE and 'sqlite3' not in DATABASES['default']['ENGINE']:
+    DATABASES['default']['ENGINE'] = DATABASE_ENGINE
+    warn_deprecated = True
+  if DATABASE_NAME and not DATABASES['default']['NAME']:
+    DATABASES['default']['NAME'] = DATABASE_NAME
+    warn_deprecated = True
+  if DATABASE_USER and not DATABASES['default']['USER']:
+    DATABASES['default']['USER'] = DATABASE_USER
+    warn_deprecated = True
+  if DATABASE_PASSWORD and not DATABASES['default']['PASSWORD']:
+    DATABASES['default']['PASSWORD'] = DATABASE_PASSWORD
+    warn_deprecated = True
+  if DATABASE_HOST and not DATABASES['default']['HOST']:
+    DATABASES['default']['HOST'] = DATABASE_HOST
+    warn_deprecated = True
+  if DATABASE_PORT and not DATABASES['default']['PORT']:
+    DATABASES['default']['PORT'] = DATABASE_PORT
+    warn_deprecated = True
+
+  if warn_deprecated:
+    warn("Found old-style settings.DATABASE_* configuration. Please see " \
+    "local_settings.py.example for an example of the updated database " \
+    "configuration style", DeprecationWarning)
+else:
+  if DATABASE_ENGINE or \
+     DATABASE_NAME or \
+     DATABASE_USER or \
+     DATABASE_PASSWORD or \
+     DATABASE_HOST or \
+     DATABASE_PORT:
+    raise ImproperlyConfigured("Found old-style settings.DATABASE_* configuration. Please remove "
+        "these settings from local_settings.py before continuing. See local_settings.py.example "
+        "for an example of the updated database configuration style")
+
+# Set a default sqlite file in STORAGE_DIR
+if 'sqlite3' in DATABASES['default']['ENGINE'] and not DATABASES['default']['NAME']:
+  DATABASES['default']['NAME'] = join(STORAGE_DIR, 'graphite.db')
 
 # Caching shortcuts
 if MEMCACHE_HOSTS:
-  CACHE_BACKEND = 'memcached://' + ';'.join(MEMCACHE_HOSTS) + ('/?timeout=%d' % DEFAULT_CACHE_DURATION)
+      CACHES['default'] = {
+        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+        'LOCATION': MEMCACHE_HOSTS,
+        'TIMEOUT': DEFAULT_CACHE_DURATION,
+    }
 
 # Authentication shortcuts
 if USE_LDAP_AUTH and LDAP_URI is None:
   LDAP_URI = "ldap://%s:%d/" % (LDAP_SERVER, LDAP_PORT)
 
-if USE_REMOTE_USER_AUTHENTICATION:
+if USE_REMOTE_USER_AUTHENTICATION or REMOTE_USER_BACKEND:
   MIDDLEWARE_CLASSES += ('django.contrib.auth.middleware.RemoteUserMiddleware',)
-  AUTHENTICATION_BACKENDS.insert(0,'django.contrib.auth.backends.RemoteUserBackend')
+  if REMOTE_USER_BACKEND:
+    AUTHENTICATION_BACKENDS.insert(0,REMOTE_USER_BACKEND)
+  else:
+    AUTHENTICATION_BACKENDS.insert(0,'django.contrib.auth.backends.RemoteUserBackend')
 
 if USE_LDAP_AUTH:
   AUTHENTICATION_BACKENDS.insert(0,'graphite.account.ldapBackend.LDAPBackend')
 
+if SECRET_KEY == 'UNSAFE_DEFAULT':
+  warn('SECRET_KEY is set to an unsafe default. This should be set in local_settings.py for better security')
+
+USE_TZ = True

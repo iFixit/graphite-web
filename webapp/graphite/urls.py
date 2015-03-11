@@ -12,11 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License."""
 
-from django.conf.urls.defaults import *
+import django
+
+try:
+    from django.conf.urls.defaults import *
+except ImportError:
+    from django.conf.urls import *
 from django.conf import settings
 from django.contrib import admin
 
-admin.autodiscover()
+if django.VERSION < (1, 7):
+    # Django doing autodiscover automaticly:
+    # https://docs.djangoproject.com/en/dev/releases/1.7/#app-loading-refactor
+    admin.autodiscover()
 
 urlpatterns = patterns('',
   ('^admin/', include(admin.site.urls)),
@@ -29,9 +37,10 @@ urlpatterns = patterns('',
   ('^dashboard/?', include('graphite.dashboard.urls')),
   ('^whitelist/?', include('graphite.whitelist.urls')),
   ('^content/(?P<path>.*)$', 'django.views.static.serve', {'document_root' : settings.CONTENT_DIR}),
-  ('graphlot/', include('graphite.graphlot.urls')),
   ('^version/', include('graphite.version.urls')),
   ('^events/', include('graphite.events.urls')),
+  ('^s/(?P<path>.*)', 'graphite.url_shortener.views.shorten'),
+  ('^S/(?P<link_id>[a-zA-Z0-9]+)/?$', 'graphite.url_shortener.views.follow'),
   ('', 'graphite.browser.views.browser'),
 )
 

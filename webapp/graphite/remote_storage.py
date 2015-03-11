@@ -5,11 +5,7 @@ from urllib import urlencode
 from django.core.cache import cache
 from django.conf import settings
 from graphite.render.hashing import compactHash
-
-try:
-  import cPickle as pickle
-except ImportError:
-  import pickle
+from graphite.util import unpickle
 
 
 
@@ -22,10 +18,13 @@ class RemoteStore(object):
     self.host = host
 
 
-  def find(self, query):
+  def find(self, query, result_queue=False):
     request = FindRequest(self, query)
     request.send()
-    return request
+    if result_queue:
+      result_queue.put(request)
+    else:
+      return request
 
 
   def fail(self):
@@ -61,7 +60,10 @@ class FindRequest:
     query_string = urlencode(query_params)
 
     try:
-      self.connection.request('GET', '/metrics/find/?' + query_string)
+      if settings.REMOTE_STORE_USE_POST:
+        self.connection.request('POST', '/metrics/find/', query_string)
+      else:
+        self.connection.request('GET', '/metrics/find/?' + query_string)
     except:
       self.store.fail()
       if not self.suppressErrors:
@@ -79,7 +81,7 @@ class FindRequest:
       response = self.connection.getresponse()
       assert response.status == 200, "received error response %s - %s" % (response.status, response.reason)
       result_data = response.read()
-      results = pickle.loads(result_data)
+      results = unpickle.loads(result_data)
 
     except:
       self.store.fail()
@@ -103,39 +105,56 @@ class RemoteNode:
     self.fs_path = None
     self.metric_path = metric_path
     self.real_metric = metric_path
-    self.name = metric_path.split('.')[-1]
     self.__isLeaf = isLeaf
+    self.__isBulk = True if isinstance(metric_path, list) else False
+
+    if self.__isBulk:
+      self.name = "Bulk: %s" % self.metric_path
+    else:
+      self.name = metric_path.split('.')[-1]
 
 
-  def fetch(self, startTime, endTime):
+  def fetch(self, startTime, endTime, now=None, result_queue=None):
     if not self.__isLeaf:
       return []
+    if self.__isBulk:
+      targets = [ ('target', v) for v in self.metric_path ]
+    else:
+      targets = [ ('target', self.metric_path) ]
 
     query_params = [
-      ('target', self.metric_path),
+      ('local', '1'),
       ('format', 'pickle'),
       ('from', str( int(startTime) )),
       ('until', str( int(endTime) ))
     ]
+    query_params.extend(targets)
+    if now is not None:
+      query_params.append(('now', str( int(now) )))
     query_string = urlencode(query_params)
 
     connection = HTTPConnectionWithTimeout(self.store.host)
     connection.timeout = settings.REMOTE_STORE_FETCH_TIMEOUT
-    connection.request('GET', '/render/?' + query_string)
+    if settings.REMOTE_STORE_USE_POST:
+      connection.request('POST', '/render/', query_string)
+    else:
+      connection.request('GET', '/render/?' + query_string)
     response = connection.getresponse()
     assert response.status == 200, "Failed to retrieve remote data: %d %s" % (response.status, response.reason)
     rawData = response.read()
 
-    seriesList = pickle.loads(rawData)
-    assert len(seriesList) == 1, "Invalid result: seriesList=%s" % str(seriesList)
-    series = seriesList[0]
+    seriesList = unpickle.loads(rawData)
 
-    timeInfo = (series['start'], series['end'], series['step'])
-    return (timeInfo, series['values'])
-
+    if result_queue:
+      result_queue.put( (self.store.host, seriesList) )
+    else:
+      return seriesList
 
   def isLeaf(self):
     return self.__isLeaf
+
+  def isLocal(self):
+    return False
 
 
 

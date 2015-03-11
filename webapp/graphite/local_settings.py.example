@@ -6,6 +6,17 @@
 #####################################
 # General Configuration #
 #####################################
+# Set this to a long, random unique string to use as a secret key for this
+# install. This key is used for salting of hashes used in auth tokens,
+# CRSF middleware, cookie storage, etc. This should be set identically among
+# instances if used behind a load balancer.
+#SECRET_KEY = 'UNSAFE_DEFAULT'
+
+# In Django 1.5+ set this to the list of hosts your graphite instances is
+# accessible as. See:
+# https://docs.djangoproject.com/en/dev/ref/settings/#std:setting-ALLOWED_HOSTS
+#ALLOWED_HOSTS = [ '*' ]
+
 # Set your local timezone (Django's default is America/Chicago)
 # If your graphs appear to be offset by a couple hours then this probably
 # needs to be explicitly set to your local timezone.
@@ -136,8 +147,6 @@
 # The default is 'django.db.backends.sqlite3' with file 'graphite.db'
 # located in STORAGE_DIR
 #
-# Users with Django 1.2 or greater should use the new dictionary
-# specification as the old database specification style is removed in 1.4
 #DATABASES = {
 #    'default': {
 #        'NAME': '/opt/graphite/storage/graphite.db',
@@ -149,13 +158,6 @@
 #    }
 #}
 #
-# Users still on Django 1.1 must use the old method instead:
-#DATABASE_ENGINE = 'django.db.backends.mysql'
-#DATABASE_NAME = 'graphite'      # Or path to the database file if using sqlite3
-#DATABASE_USER = 'graphite'
-#DATABASE_PASSWORD = 'graphite-is-awesome'
-#DATABASE_HOST = 'mysql.mycompany.com'
-#DATABASE_PORT = '3306'
 
 
 #########################
@@ -173,7 +175,16 @@
 #REMOTE_STORE_FETCH_TIMEOUT = 6   # Timeout to fetch series data
 #REMOTE_STORE_FIND_TIMEOUT = 2.5  # Timeout for metric find requests
 #REMOTE_STORE_RETRY_DELAY = 60    # Time before retrying a failed remote webapp
+#REMOTE_STORE_USE_POST = False    # Use POST instead of GET for remote requests
 #REMOTE_FIND_CACHE_DURATION = 300 # Time to cache remote metric find results
+
+## Prefetch cache
+# set to True to fetch all metrics using a single http request per remote server
+# instead of one http request per target, per remote server.
+# Especially useful when generating graphs with more than 4-5 targets or if
+# there's significant latency between this server and the backends. (>20ms)
+#REMOTE_PREFETCH_DATA = False
+
 
 ## Remote rendering settings
 # Set to True to enable rendering of Graphs on a remote webapp
@@ -192,6 +203,10 @@
 # You *should* use 127.0.0.1 here in most cases
 #CARBONLINK_HOSTS = ["127.0.0.1:7002:a", "127.0.0.1:7102:b", "127.0.0.1:7202:c"]
 #CARBONLINK_TIMEOUT = 1.0
+# Using 'query-bulk' queries for carbon
+# It's more effective, but python-carbon 0.9.13 (or latest from 0.9.x branch) is required
+# See https://github.com/graphite-project/carbon/pull/132 for details
+#CARBONLINK_QUERY_BULK = False
 
 #####################################
 # Additional Django Settings #

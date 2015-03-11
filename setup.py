@@ -34,8 +34,8 @@ examples = [ ('examples', glob('examples/example-*')) ]
 
 setup(
   name='graphite-web',
-  version='0.9.10',
-  url='https://launchpad.net/graphite',
+  version='0.9.13',
+  url='http://graphite.readthedocs.org',
   author='Chris Davis',
   author_email='chrismd@gmail.com',
   license='Apache Software License 2.0',
@@ -48,10 +48,10 @@ setup(
     'graphite.cli',
     'graphite.composer',
     'graphite.render',
+    'graphite.url_shortener',
     'graphite.whitelist',
     'graphite.metrics',
     'graphite.dashboard',
-    'graphite.graphlot',
     'graphite.events',
     'graphite.version',
     'graphite.thirdparty',

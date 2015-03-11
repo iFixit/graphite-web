@@ -1952,7 +1952,7 @@ def _fetchWithBootstrap(requestContext, seriesList, **delta_kwargs):
         #XXX For series with aggregationMethod = sum this should also
         # divide by the ratio to bring counts to the same time unit
         # ...but we have no way of knowing whether that's the case
-        newValues.extend([ value ] * ratio)
+        newValues.extend([ value ] * int(round(ratio)))
     else:
       newValues.extend(bootstrap)
     newValues.extend(original)

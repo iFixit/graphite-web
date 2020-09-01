@@ -12,8 +12,14 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License. */
 
-var RENDER_BASE_URL = window.location.protocol + "//" + window.location.host + window.location.pathname;
-RENDER_BASE_URL = RENDER_BASE_URL.replace(/\/composer\/?.*$/, '/render/?');
+// From Ext library
+/*global Ext*/
+// Defined in composer_widgets.js
+/*global createComposerWindow*/
+// Defined in composer.html
+/*global addTarget getTargetRecord TargetStore*/
+
+var RENDER_BASE_URL = window.location.protocol + '//' + window.location.host + document.body.dataset.baseUrl + 'render/?';
 
 /* GraphiteComposer encapsulates a set of Ext UI Panels,
  * as well as a ParameterizedURL for the displayed graph. */
@@ -25,12 +31,12 @@ function GraphiteComposer () {
 
 GraphiteComposer.prototype = {
   toggleTargetWithoutUpdate: function(target) {
-   this.toggleTarget(target, false); 
+   this.toggleTarget(target, false);
   },
 
   toggleTarget: function (target, updateImage) {
     /* Add the given target to the graph if it does not exist,
-     * otherwise remove it. 
+     * otherwise remove it.
      * Optionally reload the image. (default = do update) */
     var record = getTargetRecord(target);
 
@@ -91,7 +97,7 @@ GraphiteComposer.prototype = {
     }
     this.window.updateTimeDisplay(timeInfo);
     this.window.updateUI();
-    this.updateImage();
+    this.updateImage(true);
   },
 
   syncTargetList: function () {
@@ -101,7 +107,7 @@ GraphiteComposer.prototype = {
     }, this);
   },
 
-  updateImage: function () {
+  updateImage: function (urlLoad) {
     /* Set the image's url to reflect this.url's current params */
     var img = this.window.getImage();
     if (img) {
@@ -109,6 +115,20 @@ GraphiteComposer.prototype = {
       var unixTime = now.valueOf() / 1000;
       this.url.setParam('_salt', unixTime.toString() );
       img.src = this.url.getURL();
+      if (this.topWindow && !urlLoad) {
+        this.url.removeParam('_salt');
+        this.topWindow.history.pushState('', '', '?' + this.url.queryString);
+      }
+    }
+  },
+
+  enableHistory: function (topWindow) {
+    if (topWindow.history && topWindow.history.pushState) {
+      this.topWindow = topWindow;
+      var that = this;
+      topWindow.onpopstate = function() {
+        that.loadURL(topWindow.location.href);
+      };
     }
   },
 
@@ -130,9 +150,9 @@ GraphiteComposer.prototype = {
  * This code should not be specific to Graphite or
  * the Composer in any way. */
 function ParameterizedURL (baseURL) {
-  this.baseURL = baseURL ? baseURL : "";
+  this.baseURL = baseURL ? baseURL : '';
   this.params = {};
-  this.queryString = "";
+  this.queryString = '';
 }
 
 ParameterizedURL.prototype = {
@@ -208,7 +228,7 @@ ParameterizedURL.prototype = {
       if ( Ext.isString(value) ) {
         params[key] = [value];
       }
-      if (value == "undefined" || value == undefined) {
+      if (value == 'undefined' || value == undefined) {
         params[key] = null;
         delete params[key];
       }
@@ -218,7 +238,7 @@ ParameterizedURL.prototype = {
 
   setQueryString: function (qs) {
     /* Use the given query string (and update this.params to match) */
-    this.queryString = qs.replace(/%/,"%25").replace(/#/,"%23");
+    this.queryString = qs
     this.syncParams();
     this.syncQueryString();
   },
@@ -226,12 +246,12 @@ ParameterizedURL.prototype = {
   syncQueryString: function () {
     /* Set the value of this.queryString to reflect the parameters in this.params
      * Call this whenever you modify this.params */
-    this.queryString = Ext.urlEncode(this.params).replace(/#/,"%23");
+    this.queryString = Ext.urlEncode(this.params).replace(/#/,'%23');
   },
 
   copyQueryStringFromURL: function (url) {
     /* Make this object reflect the parameters of the given url */
-    var i = url.indexOf("?");
+    var i = url.indexOf('?');
     if (i == -1) { // No query string
       this.setParamHash({});
       return;

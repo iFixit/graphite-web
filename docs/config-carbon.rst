@@ -1,8 +1,15 @@
 Configuring Carbon
 ==================
 
-Carbon's config files all live in ``/opt/graphite/conf/``. If you've just installed Graphite, none of the ``.conf`` files will
-exist yet, but there will be a ``.conf.example`` file for each one. Simply copy the example files, removing the .example extension, and customize your settings.
+Carbon's config files all live in ``/opt/graphite/conf/``. If you've just installed Graphite, none of the ``.conf`` files will exist yet, but there will be a ``.conf.example`` file for each one. Simply copy the example files, removing the .example extension, and customize your settings.
+
+::
+
+  pushd /opt/graphite/conf
+  cp carbon.conf.example carbon.conf
+  cp storage-schemas.conf.example storage-schemas.conf
+
+The example defaults are sane, but they may not meet your information resolution needs or storage limitations.
 
 
 carbon.conf
@@ -15,8 +22,6 @@ This is the main config file, and defines the settings for each Carbon daemon.
     Carbon-cache and carbon-relay can run on the same host! Try swapping the default ports listed for ``LINE_RECEIVER_PORT`` and ``PICKLE_RECEIVER_PORT`` between the ``[cache]`` and ``[relay]`` sections to prevent having to reconfigure your deployed metric senders. When setting ``DESTINATIONS`` in the ``[relay]`` section, keep in mind your newly-set ``PICKLE_RECEIVER_PORT`` in the ``[cache]`` section.
 
 
-
-
 storage-schemas.conf
 --------------------
 This configuration file details retention rates for storing metrics. It matches metric paths to patterns, and tells whisper what frequency and history of datapoints to store.
@@ -25,7 +30,7 @@ Important notes before continuing:
 
 * There can be many sections in this file.
 * The sections are applied in order from the top (first) and bottom (last).
-* The patterns are regular expressions, as opposed to the wildcards used in the URL API.
+* The patterns are `regular expressions <https://docs.python.org/3/library/re.html#regular-expression-syntax>`_, as opposed to the wildcards used in the URL API.
 * The first pattern that matches the metric name is used.
 * This retention is set at the time the first metric is sent.
 * Changing this file will not affect already-created .wsp files. Use whisper-resize.py to change those.
@@ -36,7 +41,7 @@ A given rule is made up of 3 lines:
 * A regex, specified after "pattern="
 * A retention rate line, specified after "retentions="
 
-The retentions line can specify multiple retentions. Each retention of ``frequency:history`` is separated by a comma. 
+The retentions line can specify multiple retentions. Each retention of ``frequency:history`` is separated by a comma.
 
 Frequencies and histories are specified using the following suffixes:
 
@@ -44,6 +49,7 @@ Frequencies and histories are specified using the following suffixes:
 * m - minute
 * h - hour
 * d - day
+* w - week
 * y - year
 
 
@@ -55,11 +61,11 @@ Here's a simple, single retention example:
  pattern = garbageCollections$
  retentions = 10s:14d
 
-The name ``[garbage_collection]`` is mainly for documentation purposes, and will show up in ``creates.log`` when metrics matching this section are created. 
+The name ``[garbage_collection]`` is mainly for documentation purposes, and will show up in ``creates.log`` when metrics matching this section are created.
 
-The regular expression pattern will match any metric that ends with ``garbageCollections``. For example, ``com.acmeCorp.instance01.jvm.memory.garbageCollections`` would match, but ``com.acmeCorp.instance01.jvm.memory.garbageCollections.full`` would not.
+The regular expression ``pattern`` will match any metric that ends with ``garbageCollections``. For example, ``com.acmeCorp.instance01.jvm.memory.garbageCollections`` would match, but ``com.acmeCorp.instance01.jvm.memory.garbageCollections.full`` would not. Graphite is using the `Python Regular Expression Syntax <https://docs.python.org/3/library/re.html#regular-expression-syntax>`_, for an introduction to regular expressions consult the `Regular Expression HOWTO <https://docs.python.org/3/howto/regex.html#regex-howto>`_.
 
-The retention line is saying that each datapoint represents 10 seconds, and we want to keep enough datapoints so that they add up to 14 days of data.
+The ``retentions`` line is saying that each datapoint represents 10 seconds, and we want to keep enough datapoints so that they add up to 14 days of data.
 
 Here's a more complicated example with multiple retention rates:
 
@@ -93,11 +99,13 @@ This file defines how to aggregate data to lower-precision retentions.  The form
 Important notes before continuing:
 
 * This file is optional.  If it is not present, defaults will be used.
+* The sections are applied in order from the top (first) and bottom (last), similar to ``storage-schemas.conf``.
+* The first pattern that matches the metric name is used, similar to ``storage-schemas.conf``.
 * There is no ``retentions`` line.  Instead, there are ``xFilesFactor`` and/or ``aggregationMethod`` lines.
 * ``xFilesFactor`` should be a floating point number between 0 and 1, and specifies what fraction of the previous retention level's slots must have non-null values in order to aggregate to a non-null value.  The default is 0.5.
 * ``aggregationMethod`` specifies the function used to aggregate values for the next retention level.  Legal methods are ``average``, ``sum``, ``min``, ``max``, and ``last``. The default is ``average``.
 * These are set at the time the first metric is sent.
-* Changing this file will not affect .wsp files already created on disk. Use whisper-resize.py to change those.
+* Changing this file will not affect .wsp files already created on disk. Use whisper-set-aggregation-method.py to change those.
 
 Here's an example:
 
@@ -117,6 +125,16 @@ If either ``xFilesFactor`` or ``aggregationMethod`` is left out, the default val
 
 The aggregation parameters are kept separate from the retention parameters because the former depends on the type of data being collected and the latter depends on volume and importance.
 
+If you want to change aggregation methods for existing data, be sure that you update the whisper files as well.
+
+Example:
+
+.. code-block:: none
+
+  /opt/graphite/bin/whisper-set-aggregation-method.py /opt/graphite/storage/whisper/test.wsp max
+
+This example sets the aggregation for the test.wsp to max. (The location of the python script depends on your installation)
+
 
 relay-rules.conf
 ----------------
@@ -135,7 +153,7 @@ You must define at least one section as the default.
 
 aggregation-rules.conf
 ----------------------
-Aggregation rules allow you to add several metrics together as the come in, reducing the need to sum() many metrics in every URL. Note that unlike some other config files, any time this file is modified it will take effect automatically. This requires the carbon-aggregator service to be running. 
+Aggregation rules allow you to add several metrics together as they come in, reducing the need to sum() many metrics in every URL. Note that unlike some other config files, any time this file is modified it will take effect automatically. This requires the carbon-aggregator service to be running. 
 
 The form of each line in this file should be as follows:
 
@@ -143,11 +161,20 @@ The form of each line in this file should be as follows:
 
   output_template (frequency) = method input_pattern
 
-This will capture any received metrics that match 'input_pattern'
+This will capture any received metrics that match ``input_pattern``
 for calculating an aggregate metric. The calculation will occur
-every 'frequency' seconds and the 'method' can specify 'sum' or
-'avg'. The name of the aggregate metric will be derived from
-'output_template' filling in any captured fields from 'input_pattern'.
+every ``frequency`` seconds using a valid ``method``. The name of the aggregate
+metric will be derived from ``output_template`` filling in any captured
+fields from ``input_pattern``. Any metric that will arrive to
+``carbon-aggregator`` will proceed to its output untouched unless it
+is overridden by some rule.
+
+Available aggregation methods are: ``sum``, ``avg``, ``min``, ``max``, ``p50``, ``p75``, ``p80``, ``p90``, ``p95``, ``p99``, ``p999``, and ``count`` - where ``p50`` means 50th percentile and ``p999`` means 99.9th percentile, etc.
+
+Care should be taken when using percentile aggregation methods because re-aggregation does not work the way you might_ expect_. The utility of percentile aggregation however means they are provided if you wish to use them.
+
+.. _might: https://www.vividcortex.com/blog/why-percentiles-dont-work-the-way-you-think
+.. _expect: https://grafana.com/blog/2016/03/03/25-graphite-grafana-and-statsd-gotchas/#aggregating.percentiles
 
 For example, if your metric naming scheme is:
 
@@ -173,8 +200,74 @@ As an example, if the following metrics are received:
   prod.applications.apache.www05.requests
 
 They would all go into the same aggregation buffer and after 60 seconds the
-aggregate metric 'prod.applications.apache.all.requests' would be calculated
+aggregate metric ``prod.applications.apache.all.requests`` would be calculated
 by summing their values.
+
+Template components such as <env> will match everything up to the next dot.
+To match metric multiple components including the dots, use <<metric>> in the input template:
+
+.. code-block:: none
+
+  <env>.applications.<app>.all.<app_metric> (60) = sum <env>.applications.<app>.*.<<app_metric>>
+  
+It is also possible to use regular expressions. Following the example above when using:
+
+.. code-block:: none
+
+  <env>.applications.<app>.<domain>.requests (60) = sum <env>.applications.<app>.<domain>\d{2}.requests
+
+You will end up with ``prod.applications.apache.www.requests`` instead of ``prod.applications.apache.all.requests``.
+
+Another common use pattern of ``carbon-aggregator`` is to aggregate several data points
+of the *same metric*. This could come in handy when you have got the same metric coming from
+several hosts, or when you are bound to send data more frequently than your shortest retention.
+
+rewrite-rules.conf
+------------------
+
+Rewrite rules allow you to rewrite metric names using Python regular
+expressions. Note that unlike some other config files, any time this file is
+modified it will take effect automatically. This requires the carbon-aggregator
+service to be running.
+
+The form of each line in this file should be as follows:
+
+.. code-block:: none
+
+  regex-pattern = replacement-text
+
+This will capture any received metrics that match 'regex-pattern' and rewrite
+the matched portion of the text with 'replacement-text'. The 'regex-pattern'
+must be a valid Python regular expression, and the 'replacement-text' can be any
+value. You may also use capture groups:
+
+.. code-block:: none
+
+  ^collectd\.([a-z0-9]+)\. = \1.system.
+
+Which would result in:
+
+.. code-block:: none
+
+  collectd.prod.cpu-0.idle-time => prod.system.cpu-0.idle-item
+
+rewrite-rules.conf consists of two sections, [pre] and [post]. The rules in the
+pre section are applied to metric names as soon as they are received. The post
+rules are applied after aggregation has taken place.
+
+For example:
+
+.. code-block:: none
+
+  [post]
+  _sum$ =
+  _avg$ =
+
+These rules would strip off a suffix of _sum or _avg from any metric names after
+aggregation.
+
+**Note:** if you plan to use the ``=`` sign in your rewrite rules. Use its octal value: ``\075``.
+For example ``foo=bar = foo.bar`` would be ``foo\075bar = foo.bar``
 
 whitelist and blacklist
 -----------------------

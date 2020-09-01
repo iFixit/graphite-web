@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License."""
 
-from django.conf.urls.defaults import *
+from django.conf.urls import url
+from . import views
 
-urlpatterns = patterns('graphite.account.views',
-  ('^login/?$', 'loginView'),
-  ('^logout/?$', 'logoutView'),
-  ('^edit/?$', 'editProfile'),
-  ('^update/?$','updateProfile'),
-)
+urlpatterns = [
+    url(r'^/login/?$', views.loginView, name='account_login'),
+    url(r'^/logout/?$', views.logoutView, name='account_logout'),
+    url(r'^/edit/?$', views.editProfile, name='account_edit'),
+    url(r'^/update/?$', views.updateProfile, name='account_update'),
+]

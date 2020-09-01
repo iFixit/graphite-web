@@ -1,18 +1,23 @@
-import time
 import os
 
 from django.db import models
-from django.contrib import admin
-from tagging.managers import ModelTaggedItemManager
+
+# Monkeypatching so that django-tagging can import python_2_unicode_compatible
+import django.utils.encoding
+import six
+django.utils.encoding.python_2_unicode_compatible = six.python_2_unicode_compatible
+django.utils.six = six
+from tagging.models import Tag  # noqa: E402
+
+from graphite.events.compat import ModelTaggedItemManager  # noqa: E402
 
 if os.environ.get('READTHEDOCS'):
     TagField = lambda *args, **kwargs: None
 else:
     from tagging.fields import TagField
 
-class Event(models.Model):
-    class Admin: pass
 
+class Event(models.Model):
     when = models.DateTimeField()
     what = models.CharField(max_length=255)
     data = models.TextField(blank=True)
@@ -25,10 +30,15 @@ class Event(models.Model):
         return "%s: %s" % (self.when, self.what)
 
     @staticmethod
-    def find_events(time_from=None, time_until=None, tags=None):
+    def find_events(time_from=None, time_until=None, tags=None, set_operation=None):
 
         if tags is not None:
-            query = Event.tagged.with_all(tags)
+            if set_operation == 'union':
+                query = Event.tagged.with_any(tags)
+            elif set_operation == 'intersection':
+                query = Event.tagged.with_intersection(tags)
+            else:
+                query = Event.tagged.with_all(tags)
         else:
             query = Event.objects.all()
 
@@ -38,7 +48,6 @@ class Event(models.Model):
         if time_until is not None:
             query = query.filter(when__lte=time_until)
 
-
         result = list(query.order_by("when"))
         return result
 
@@ -47,9 +56,10 @@ class Event(models.Model):
             when=self.when,
             what=self.what,
             data=self.data,
-            tags=self.tags,
+            tags=self.tags.split(),
             id=self.id,
         )
+
 
 # We use this rather than tagging.register() so that tags can be exposed
 # in the admin UI

@@ -1,8 +1,11 @@
+// From Ext library
+/*global Ext*/
+
 var MetricCompleter;
 
 MetricCompleter = Ext.extend(Ext.form.ComboBox, {
-  displayField: "path",
-  listEmptyText: "No matching metrics",
+  displayField: 'path',
+  listEmptyText: 'No matching metrics',
   mode: 'remote',
   hideTrigger: true,
   queryDelay: 100,
@@ -14,7 +17,7 @@ MetricCompleter = Ext.extend(Ext.form.ComboBox, {
     var _this = this;
 
     var store = new Ext.data.JsonStore({
-      url: "../metrics/find/",
+      url: document.body.dataset.baseUrl + 'metrics/find/',
       root: 'metrics',
       fields: ['path', 'name'],
       baseParams: {format: 'completer'}
@@ -41,7 +44,9 @@ MetricCompleter = Ext.extend(Ext.form.ComboBox, {
   },
 
   prepareQuery: function (queryEvent) {
-    queryEvent.query += '*';
+    if (queryEvent.query.substr(-1) != '*') {
+      queryEvent.query += '*';
+    }
   },
 
   onSpecialKey: function (field, e) {

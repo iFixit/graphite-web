@@ -13,21 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License."""
 
 import re
-from django.shortcuts import render_to_response
-from django.http import HttpResponse
-from django.conf import settings
-from graphite.account.models import Profile
-from graphite.util import getProfile, getProfileByUsername, defaultUser, json
-from graphite.logger import log
-try:
-  from hashlib import md5
-except ImportError:
-  from md5 import md5
 
-try:
-  import cPickle as pickle
-except ImportError:
-  import pickle
+from django.conf import settings
+from django.shortcuts import render
+from django.utils.safestring import mark_safe
+from django.utils.html import escape
+from graphite.account.models import Profile
+from graphite.compat import HttpResponse
+from graphite.user_util import getProfile, getProfileByUsername
+from graphite.util import json
+from graphite.logger import log
+from hashlib import md5
 
 
 def header(request):
@@ -37,29 +33,30 @@ def header(request):
   context['profile'] = getProfile(request)
   context['documentation_url'] = settings.DOCUMENTATION_URL
   context['login_url'] = settings.LOGIN_URL
-  return render_to_response("browserHeader.html", context)
+  return render(request, "browserHeader.html", context)
 
 
 def browser(request):
   "View for the top-level frame of the browser UI"
   context = {
-    'queryString' : request.GET.urlencode(),
-    'target' : request.GET.get('target')
+    'queryString': mark_safe(request.GET.urlencode()),
+    'target': request.GET.get('target')
   }
   if context['queryString']:
     context['queryString'] = context['queryString'].replace('#','%23')
   if context['target']:
     context['target'] = context['target'].replace('#','%23') #js libs terminate a querystring on #
-  return render_to_response("browser.html", context) 
+  return render(request, "browser.html", context)
 
 
 def search(request):
-  query = request.POST['query']
+  query = request.POST.get('query')
   if not query:
     return HttpResponse("")
 
   patterns = query.split()
   regexes = [re.compile(p,re.I) for p in patterns]
+
   def matches(s):
     for regex in regexes:
       if regex.search(s):
@@ -77,7 +74,7 @@ def search(request):
 
   index_file.close()
   result_string = ','.join(results)
-  return HttpResponse(result_string, mimetype='text/plain')
+  return HttpResponse(result_string, content_type='text/plain')
 
 
 def myGraphLookup(request):
@@ -98,7 +95,7 @@ def myGraphLookup(request):
   }
 
   try:
-    path = str( request.GET['path'] )
+    path = request.GET.get('path', u'')
 
     if path:
       if path.endswith('.'):
@@ -108,7 +105,7 @@ def myGraphLookup(request):
         userpath_prefix = path + '.'
 
     else:
-      userpath_prefix = ""
+      userpath_prefix = u""
 
     matches = [ graph for graph in profile.mygraph_set.all().order_by('name') if graph.name.startswith(userpath_prefix) ]
 
@@ -131,21 +128,21 @@ def myGraphLookup(request):
          if name in leaf_inserted: continue
          leaf_inserted.add(name)
 
-      node = {'text' : str(name) }
+      node = {'text': escape(name)}
 
       if isBranch:
-        node.update( { 'id' : str(userpath_prefix + name + '.') } )
+        node.update({'id': userpath_prefix + name + '.'})
         node.update(branchNode)
 
       else:
         m = md5()
-        m.update(name)
-        node.update( { 'id' : str(userpath_prefix + m.hexdigest()), 'graphUrl' : str(graph.url) } )
+        m.update(name.encode('utf-8'))
+        node.update( { 'id' : str(userpath_prefix + m.hexdigest()), 'graphUrl' : graph.url } )
         node.update(leafNode)
 
       nodes.append(node)
 
-  except:
+  except Exception:
     log.exception("browser.views.myGraphLookup(): could not complete request.")
 
   if not nodes:
@@ -154,6 +151,7 @@ def myGraphLookup(request):
     nodes.append(no_graphs)
 
   return json_response(nodes, request)
+
 
 def userGraphLookup(request):
   "View for User Graphs navigation"
@@ -184,13 +182,13 @@ def userGraphLookup(request):
   try:
 
     if not username:
-      profiles = Profile.objects.exclude(user=defaultUser)
+      profiles = Profile.objects.exclude(user__username='default').order_by('user__username')
 
       for profile in profiles:
         if profile.mygraph_set.count():
           node = {
-            'text' : str(profile.user.username),
-            'id' : str(profile.user.username)
+            'text' : profile.user.username,
+            'id' : profile.user.username,
           }
 
           node.update(branchNode)
@@ -205,7 +203,7 @@ def userGraphLookup(request):
       else:
         prefix = ''
 
-      matches = [ graph for graph in profile.mygraph_set.all().order_by('name') if graph.name.startswith(prefix) ]
+      matches = [ graph for graph in profile.mygraph_set.order_by('name') if graph.name.startswith(prefix) ]
       inserted = set()
 
       for graph in matches:
@@ -218,24 +216,24 @@ def userGraphLookup(request):
 
         if '.' in relativePath: # branch
           node = {
-            'text' : str(nodeName),
-            'id' : str(username + '.' + prefix + nodeName + '.'),
+            'text' : escape(nodeName),
+            'id' : username + '.' + prefix + nodeName + '.',
           }
           node.update(branchNode)
         else: # leaf
           m = md5()
-          m.update(nodeName)
+          m.update(nodeName.encode('utf-8'))
 
           node = {
-            'text' : str(nodeName ),
-            'id' : str(username + '.' + prefix + m.hexdigest()),
-            'graphUrl' : str(graph.url),
+            'text' : escape(nodeName),
+            'id' : username + '.' + prefix + m.hexdigest(),
+            'graphUrl' : graph.url,
           }
           node.update(leafNode)
 
         nodes.append(node)
 
-  except:
+  except Exception:
     log.exception("browser.views.userLookup(): could not complete request for %s" % username)
 
   if not nodes:
@@ -243,27 +241,23 @@ def userGraphLookup(request):
     no_graphs.update(leafNode)
     nodes.append(no_graphs)
 
+  nodes.sort(key=lambda node: node['allowChildren'], reverse = True)
+
   return json_response(nodes, request)
 
 
 def json_response(nodes, request=None):
   if request:
-    jsonp = request.REQUEST.get('jsonp', False)
+    jsonp = request.GET.get('jsonp', False) or request.POST.get('jsonp', False)
   else:
     jsonp = False
   #json = str(nodes) #poor man's json encoder for simple types
   json_data = json.dumps(nodes)
   if jsonp:
-    response = HttpResponse("%s(%s)" % (jsonp, json_data),mimetype="text/javascript")
+    response = HttpResponse("%s(%s)" % (jsonp, json_data),
+                            content_type="text/javascript")
   else:
-    response = HttpResponse(json_data,mimetype="application/json")
+    response = HttpResponse(json_data, content_type="application/json")
   response['Pragma'] = 'no-cache'
   response['Cache-Control'] = 'no-cache'
   return response
-
-
-def any(iterable): #python2.4 compatibility
-  for i in iterable:
-    if i:
-      return True
-  return False

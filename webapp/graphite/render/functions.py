@@ -5821,6 +5821,8 @@ SeriesFunctions = {
   'timeSlice': timeSlice,
   'timeStack': timeStack,
   'transformNull': transformNull,
+  'resample'  : resample,
+  'smooth' : smooth,
 
   # Calculate functions
   'aggregateLine': aggregateLine,
